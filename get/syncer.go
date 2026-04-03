@@ -80,6 +80,11 @@ type RepoType struct {
 }
 
 var (
+	PackageExtensions = map[string]struct{}{
+		".rpm":  {},
+		".deb":  {},
+		".udeb": {},
+	}
 	repoTypes = map[string]RepoType{
 		"rpm": {
 			MetadataPath: "repodata/repomd.xml",

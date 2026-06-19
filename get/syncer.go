@@ -71,12 +71,13 @@ const repomdPath = "repodata/repomd.xml"
 const releasePath = "Release"
 
 type RepoType struct {
-	MetadataPath         string
-	PackagesType         string
-	DecodeMetadata       func(io.Reader) (XMLRepomd, error)
-	DecodePackages       func(io.Reader, string) (XMLMetaData, error)
-	MetadataSignatureExt string
-	Noarch               string
+	MetadataPath              string
+	PackagesType              string
+	DecodeMetadata            func(io.Reader) (XMLRepomd, error)
+	DecodePackages            func(io.Reader, string) (XMLMetaData, error)
+	MetadataSignatureExt      string
+	Noarch                    string
+	AdditionalMetadataPaths   []string
 }
 
 var (
@@ -99,12 +100,13 @@ var (
 			Noarch:               "noarch",
 		},
 		"deb": {
-			MetadataPath:         "Release",
-			PackagesType:         "Packages",
-			DecodeMetadata:       decodeRelease,
-			DecodePackages:       decodePackages,
-			MetadataSignatureExt: ".gpg",
-			Noarch:               "all",
+			MetadataPath:            "Release",
+			PackagesType:            "Packages",
+			DecodeMetadata:          decodeRelease,
+			DecodePackages:          decodePackages,
+			MetadataSignatureExt:    ".gpg",
+			Noarch:                  "all",
+			AdditionalMetadataPaths: []string{"InRelease", "Release.gpg", "Release.key"},
 		},
 	}
 	SkipLegacy bool
@@ -307,12 +309,11 @@ func (r *Syncer) processMetadata(checksumMap map[string]XMLChecksum) (packagesTo
 			return
 		}
 
-		// DEB succeeded - download additional signature files
+		// DEB succeeded - download additional metadata files
 		// Note: Release.gpg and Release.key may have been downloaded by checkRepomdSignature()
 		// for verification. Check if they already exist before re-downloading.
-		extraFiles := []string{"InRelease", "Release.gpg", "Release.key"}
 		isManagerTools := strings.Contains(r.URL.String(), "MultiLinuxManagerTools")
-		for _, file := range extraFiles {
+		for _, file := range repoTypes["deb"].AdditionalMetadataPaths {
 			// Avoid re-downloading signature/key if they were already fetched during signature verification.
 			if file == "Release.gpg" || file == "Release.key" {
 				if reader, rerr := r.storage.NewReader(file, Temporary); rerr == nil {

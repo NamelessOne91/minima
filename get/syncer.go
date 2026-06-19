@@ -303,9 +303,51 @@ func (r *Syncer) processMetadata(checksumMap map[string]XMLChecksum) (packagesTo
 			err = doProcessMetadata(reader, repoTypes["deb"])
 			return
 		})
-		return
-	}
+		if err != nil {
+			return
+		}
 
+		// DEB succeeded - download additional signature files
+		// Note: Release.gpg and Release.key may have been downloaded by checkRepomdSignature()
+		// for verification. Check if they already exist before re-downloading.
+		extraFiles := []string{"InRelease", "Release.gpg", "Release.key"}
+		isManagerTools := strings.Contains(r.URL.String(), "MultiLinuxManagerTools")
+		for _, file := range extraFiles {
+			// Avoid re-downloading signature/key if they were already fetched during signature verification.
+			if file == "Release.gpg" || file == "Release.key" {
+				if reader, rerr := r.storage.NewReader(file, Temporary); rerr == nil {
+					_ = reader.Close()
+					continue
+				} else if rerr != ErrFileNotFound {
+					err = rerr
+					return
+				}
+			}
+
+			extraErr := r.downloadStoreApply(file, "", file, 0, util.Nop)
+			if extraErr == nil {
+				continue
+			}
+
+			// Only strictly enforce Release.gpg for MultiLinuxManagerTools repositories.
+			if isManagerTools && file == "Release.gpg" {
+				// Don't ignore any errors for required file; propagate so StoreRepo can retry.
+				err = extraErr
+				return
+			}
+
+			// For optional files, ignore 403/404 (file doesn't exist)
+			ignoredErr := ignoreStatusCode(extraErr, 403, 404)
+			if ignoredErr == nil {
+				continue
+			}
+
+			// Non-403/404 error on optional file: propagate so StoreRepo can retry instead of committing corrupt state
+			log.Printf("Failed to download optional file %s, retrying sync: %v\n", file, ignoredErr)
+			err = ignoredErr
+			return
+		}
+	}
 	return
 }
 
